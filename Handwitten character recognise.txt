@@ -1,0 +1,93 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Dense, Flatten, Dropout
+from tensorflow.keras.utils import to_categorical
+from sklearn.model_selection import train_test_split
+from scipy.io import loadmat
+
+# Load EMNIST dataset (Balanced split)
+def load_emnist_data():
+    data = loadmat('emnist-balanced.mat')  # Download from https://www.nist.gov/itl/products-and-services/emnist-dataset
+    X = data['dataset']['train'][0][0]['images'][0][0]
+    y = data['dataset']['train'][0][0]['labels'][0][0]
+    X_test = data['dataset']['test'][0][0]['images'][0][0]
+    y_test = data['dataset']['test'][0][0]['labels'][0][0]
+
+    X = X.reshape((-1, 28, 28), order='F')
+    X_test = X_test.reshape((-1, 28, 28), order='F')
+    
+    X = np.expand_dims(X, -1) / 255.0
+    X_test = np.expand_dims(X_test, -1) / 255.0
+
+    y = to_categorical(y)
+    y_test = to_categorical(y_test)
+    return X, y, X_test, y_test
+
+# Build CNN model
+def build_model(input_shape, num_classes):
+    model = Sequential([
+        Conv2D(32, kernel_size=(3,3), activation='relu', input_shape=input_shape),
+        MaxPooling2D(pool_size=(2,2)),
+        Dropout(0.25),
+        Conv2D(64, kernel_size=(3,3), activation='relu'),
+        MaxPooling2D(pool_size=(2,2)),
+        Dropout(0.25),
+        Flatten(),
+        Dense(128, activation='relu'),
+        Dropout(0.5),
+        Dense(num_classes, activation='softmax')
+    ])
+    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+    return model
+
+# Map EMNIST class indices to characters
+def load_emnist_mapping():
+    with open('emnist-balanced-mapping.txt') as f:  # From EMNIST website
+        lines = f.readlines()
+    mapping = {}
+    for line in lines:
+        idx, ascii_code = map(int, line.strip().split())
+        mapping[idx] = chr(ascii_code)
+    return mapping
+
+# Predict on a single image
+def predict_character(model, image, mapping):
+    img = image.reshape(1, 28, 28, 1)
+    prediction = model.predict(img)
+    predicted_class = np.argmax(prediction)
+    return mapping[predicted_class]
+
+# Main code
+def main():
+    print("Loading EMNIST data...")
+    X, y, X_test, y_test = load_emnist_data()
+    input_shape = (28, 28, 1)
+    num_classes = y.shape[1]
+
+    print("Building model...")
+    model = build_model(input_shape, num_classes)
+
+    print("Training model...")
+    model.fit(X, y, epochs=5, batch_size=128, validation_data=(X_test, y_test))
+
+    print("Evaluating model...")
+    loss, acc = model.evaluate(X_test, y_test)
+    print(f"Test Accuracy: {acc * 100:.2f}%")
+
+    mapping = load_emnist_mapping()
+
+    # Show a random prediction
+    idx = np.random.randint(0, X_test.shape[0])
+    image = X_test[idx]
+    label = np.argmax(y_test[idx])
+    predicted_char = predict_character(model, image, mapping)
+
+    plt.imshow(image.squeeze(), cmap='gray')
+    plt.title(f"Predicted: {predicted_char}")
+    plt.axis('off')
+    plt.show()
+
+if _name_ == '_main_':
+    main()
